@@ -101,7 +101,7 @@ void setup() {
      }
      //密码错误
      else if(WiFi.status() == 4){
-        neopixelWrite(led,zijian[3][0],zijian[3][1],zijian[3][2]);
+        neopixelWrite(led,zijian[0][0],zijian[0][1],zijian[0][2]);
         delay(100);
         neopixelWrite(led, 0, 0, 0);
         i++;
@@ -130,7 +130,7 @@ void loop(){
     zdbzw = false;
     while(1){
         sb(sos,true,-1.0,true);
-        delay(40);
+        delay(3000);
         digitalWrite(fmq,1);
         neopixelWrite(led, 50, 0, 0);
     }

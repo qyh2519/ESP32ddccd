@@ -24,7 +24,7 @@ mysql_info = {
     "cursorclass": pymysql.cursors.DictCursor 
 }
 
-send_mail_flag = True
+send_mail_flag = False 
 smtp_server = "smtp.qq.com"
 smtp_port = 465
 my_qq = "q221147@qq.com"
@@ -70,7 +70,7 @@ def fa_youjian(wd, yuanyin):
 @app.route("/sbsj", methods=["POST", "GET"])
 def sbsj():
     if request.method == "POST":
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
     else:
         data = request.args.to_dict()
     if not data:
@@ -103,10 +103,14 @@ def sbsj():
         print("数据入库异常:", e)
 
     bj_yuanyin = []
-    if wd == 505.0:
+    # ⭐️ 加入 9999 断线特判
+    if wd == 9999.0:
+        bj_yuanyin.append("传感器断线/未接入")
+    elif wd == 505.0:
         bj_yuanyin.append("主电源被断开，系统正在使用备用电源求救")
     elif wd > max_wd:
         bj_yuanyin.append("电池温度过高")
+        
     if yw == 1:
         bj_yuanyin.append("检测到环境烟雾")
     if sulv > 1.0:
@@ -124,15 +128,21 @@ def sbsj():
 # ================= 2. 网页下发指令接口 =================
 @app.route("/send_cmd", methods=["POST", "GET"])
 def send_cmd():
-    cmd = str(request.args.get("cmd", "")).strip()
+    #  兼容 JSON 和 URL 参数两种请求
+    data = request.get_json(silent=True) or {}
+    cmd = data.get("cmd") or request.args.get("cmd", "")
+    cmd = str(cmd).strip()
+    
     if not cmd:
-        return jsonify({"status": "error"}), 400
+        return jsonify({"status": "error", "msg": "缺少 cmd 参数"}), 400
     try:
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("INSERT INTO commands (command, status) VALUES (%s, 0)", (cmd,))
+        new_id = cur.lastrowid
         conn.close()
-        return jsonify({"status": "ok"})
+        # 返回 id，防止前端显示 undefined
+        return jsonify({"status": "ok", "id": new_id})
     except:
         return jsonify({"status": "error"}), 500
 
@@ -148,8 +158,8 @@ def api_latest():
         
         if row:
             res = {
-                "temp": float(row["temp"]),
-                "sulv": float(row["sulv"]),
+                "temp": float(row["temp"]) if row["temp"] is not None else 0.0,
+                "sulv": float(row["sulv"]) if row["sulv"] is not None else 0.0,
                 "yanwu": row["yanwu"],
                 "jdqzt": row["jdqzt"],
                 "time": row["time"].strftime("%Y-%m-%d %H:%M:%S")
@@ -158,8 +168,8 @@ def api_latest():
             res = {"temp": 0, "sulv": 0, "yanwu": 0, "jdqzt": 0, "time": "--"}
         res["status"] = "ok"
         return jsonify(res)
-    except:
-        return jsonify({"status": "error"})
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)})
 
 # ================= 4. 历史表格数据（网页底部列表） =================
 @app.route("/query")
@@ -175,15 +185,15 @@ def query():
         for r in rows:
             records.append({
                 "id": r["id"],
-                "temp": float(r["temp"]),
-                "sulv": float(r["sulv"]),
+                "temp": float(r["temp"]) if r["temp"] is not None else 0.0,
+                "sulv": float(r["sulv"]) if r["sulv"] is not None else 0.0,
                 "yanwu": r["yanwu"], 
                 "jdqzt": r["jdqzt"],
                 "time": r["time"].strftime("%Y-%m-%d %H:%M:%S")
             })
         return jsonify({"status": "ok", "records": records})
-    except:
-        return jsonify({"status": "error"})
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)})
 
 # ================= 5. 曲线数据（网页中间的折线图） =================
 @app.route("/api/history")
@@ -196,8 +206,10 @@ def api_history():
         conn.close()
 
         points = []
+        temps = [] 
         for r in rows:
             t = float(r["temp"]) if r["temp"] is not None else 0
+            temps.append(t)
             points.append({
                 "t": r["time"].strftime("%H:%M"),
                 "ts": r["time"].strftime("%Y-%m-%d %H:%M:%S"),
@@ -205,9 +217,17 @@ def api_history():
                 "count": 1,
                 "alarm": 1 if r["yanwu"] == 1 else 0
             })
-        return jsonify({"status": "ok", "has_data": len(points) > 0, "points": points})
-    except:
-        return jsonify({"status": "error"})
+       
+        stats = {
+            "count": len(points),
+            "max": max(temps) if temps else 0,
+            "min": min(temps) if temps else 0,
+            "avg": round(sum(temps) / len(temps), 2) if temps else 0
+        }
+            
+        return jsonify({"status": "ok", "has_data": len(points) > 0, "points": points, "stats": stats})
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)})
 
 # ================= 6. 网页渲染 =================
 @app.route("/dashboard")
