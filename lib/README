@@ -1,0 +1,7 @@
+# lib/
+
+存放项目私有库。当前没有自定义库，所以这个目录是空的。
+
+项目用到的 OneWire 和 DallasTemperature 两个外部库由 PlatformIO 按 `platformio.ini` 的 `lib_deps` 自动下载，装在这之外的位置。
+
+如果要自己写可复用的库模块，可以在这里建子目录，PlatformIO 会自动识别并参与编译。
