@@ -5,10 +5,9 @@
 #include <DallasTemperature.h>
 
 //服务器及wifi相关参数
-const char* wifiid = "ESP32";
-const char* sjrdid = "vivo iQOO Pro";
+const char* sjrdid = "OPPOA575G";
 const char* sjrdmm = "12345678";
-const char* wz = "http://stm32.202519.eu.cc/sbsj";
+const char* wz = "http://8.215.16.101/sbsj";
 
 //引脚定义
 #define wd 4
@@ -18,13 +17,14 @@ const char* wz = "http://stm32.202519.eu.cc/sbsj";
 #define led 48
 
 //定义一些雷霆常量
-#define ywyr 20000
+#define ywyr 30000
 #define cy 180
 #define wdcwm 9999
 #define sos 505
 
 #define fazhi 60.0
-#define swsl 1
+#define swsl 0.5
+#define sulv_keep 5000 //保持温度的时间
 
 #define sbsj 5000
 
@@ -42,6 +42,9 @@ unsigned long ywTime = 0;
 bool dqyw;
 
 volatile bool zdbzw = false;
+
+bool sulv_latched = false;              // 新增：速率报警是否已锁存
+unsigned long last_sulv_Time = 0;       // 新增：上次速率超阈值的时间
 
 //自检用的二维数组
 const int zijian [3] [3] = {
@@ -71,12 +74,15 @@ void setup() {
  sensors.setResolution(9);
 
  //自检
- digitalWrite(fmq,1);
  for(int i = 0;i<3;i++){
- neopixelWrite(led,zijian[i][0],zijian[i][1],zijian[i][2]);
- delay(300);
- neopixelWrite(led, 0, 0, 0);
- }
+  neopixelWrite(led,zijian[i][0],zijian[i][1],zijian[i][2]);
+  digitalWrite(fmq,1);
+  delay(300);
+  digitalWrite(fmq,0);
+  neopixelWrite(led, 0, 0, 0);
+  delay(80); //间隔一小段，防止连续太挤
+}
+
  digitalWrite(fmq,0);
 
  attachInterrupt(digitalPinToInterrupt(zd), zdhs, FALLING);
@@ -128,16 +134,29 @@ void loop(){
  //掉电处理
  if(zdbzw == true){
     zdbzw = false;
-    while(1){
-        sb(sos,true,-1.0,true);
-        delay(3000);
+    if(digitalRead(zd) == 0){
+     delay(90);
+       if(digitalRead(zd) == 0){
+        while(1){
+        sb(sos,false,-1.0,true);
+        delay(2000);
         digitalWrite(fmq,1);
         neopixelWrite(led, 50, 0, 0);
+        if(digitalRead(zd) == 1){
+        digitalWrite(fmq, 0);
+        neopixelWrite(led, 0, 0, 75);
+        sulv_latched = false;        // 顺便清掉锁存
+        break;
+        }
+       }
+     }
+     else{return;}
     }
+    else{return;}
  }
  unsigned long now = millis();
  if(now-last_wd_Time>=cy){
-     last_wd_Time = now;
+     last_wd_Time = millis();
      sensors.requestTemperatures();
      dqwd = sensors.getTempCByIndex(0);
      if (dqwd == DEVICE_DISCONNECTED_C){
@@ -145,14 +164,28 @@ void loop(){
      } 
         
         if (now - ywTime > ywyr) { 
-            dqyw = (digitalRead(yw) == 1); 
+            dqyw = (digitalRead(yw) == 0); 
         } 
         else {
             dqyw = false; 
         }
     
      sf(dqwd);
-     bool baojing = (dqwd >= fazhi) or dqyw or (shengwensulv > swsl) or (dqwd == wdcwm);
+
+     // ===== 速率超阈值锁存 =====
+     if(shengwensulv > swsl){
+        if(sulv_latched == false){
+           sulv_latched = true;
+           sb(dqwd, dqyw, shengwensulv, true);   // 强制立刻发一条
+           last_sb_Time = millis();
+        }
+        last_sulv_Time = millis();
+     }
+     if(sulv_latched == true && (now - last_sulv_Time >= sulv_keep)){
+        sulv_latched = false;
+     }
+
+     bool baojing = (dqwd >= fazhi) or dqyw or sulv_latched or (dqwd == wdcwm);
      if (baojing) {
         neopixelWrite(led, 50, 0, 0);
         digitalWrite(fmq, 1);
@@ -162,7 +195,7 @@ void loop(){
      }
      //上报数据
      if (now - last_sb_Time >= sbsj) {
-        last_sb_Time = now;
+        last_sb_Time = millis();
         sb(dqwd, dqyw, shengwensulv, baojing); 
      }
     }
@@ -200,8 +233,8 @@ if(huangziquan == false){
                      ",\"sulv\":" + String(sulv, 2) + 
                      ",\"jdqzt\":" + String(baojing ? 1 : 0) + "}";
     
-    http.POST(payload);
-    http.end(); 
-    neopixelWrite(led, 0, 0, 0);
-    neopixelWrite(led, 0, 100, 0);
+ int code = http.POST(payload);
+ http.end();
+ if(code == 200) neopixelWrite(led, 0, 100, 0);
+ else            neopixelWrite(led, 100, 0, 0);
 }
