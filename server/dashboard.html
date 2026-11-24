@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电动车电池安全监控仪表盘</title>
+<style>
+  /* ==================== 全局 ==================== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+                 "Microsoft YaHei", "Segoe UI", sans-serif;
+    background:
+      radial-gradient(1000px 600px at 12% -8%, rgba(56,189,248,.12), transparent 60%),
+      radial-gradient(900px 520px at 100% 0%, rgba(139,92,246,.12), transparent 55%),
+      linear-gradient(160deg, #0b1120 0%, #131f35 55%, #0f172a 100%);
+    background-attachment: fixed;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 16px;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(rgba(148,163,184,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,.035) 1px, transparent 1px);
+    background-size: 40px 40px;
+    -webkit-mask-image: linear-gradient(to bottom, #000, transparent 82%);
+    mask-image: linear-gradient(to bottom, #000, transparent 82%);
+  }
+  .wrap { max-width: 1150px; margin: 0 auto; position: relative; z-index: 1; }
+
+  /* ==================== 顶部 ==================== */
+  header {
+    background: rgba(30,41,59,.7); border: 1px solid #334155; border-radius: 16px;
+    padding: 18px 22px; margin-bottom: 14px;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+    backdrop-filter: blur(8px);
+  }
+  header h1 {
+    font-size: 21px; font-weight: 800; display: flex; align-items: center; gap: 10px;
+    background: linear-gradient(90deg, #e0f2fe, #7dd3fc 55%, #a78bfa);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  #clock { font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: #22c55e;
+    box-shadow: 0 0 10px #22c55e; animation: blink 2s infinite;
+  }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  .dev-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(56,189,248,.12); border: 1px solid rgba(56,189,248,.35);
+    color: #7dd3fc; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600;
+  }
+  .dev-chip.online  { background: rgba(34,197,94,.12);  border-color: rgba(34,197,94,.4);  color: #86efac; }
+  .dev-chip.offline { background: rgba(239,68,68,.12);  border-color: rgba(239,68,68,.4);  color: #fca5a5; }
+  .meta { font-size: 12.5px; color: #94a3b8; text-align: right; line-height: 1.7; }
+  .meta strong { color: #e2e8f0; }
+  #freshness { font-size: 12px; margin-top: 2px; }
+
+  /* ==================== 报警横幅 ==================== */
+  #alarmBanner {
+    display: none; background: linear-gradient(90deg, rgba(220,38,38,.25), rgba(220,38,38,.08));
+    border: 1px solid rgba(239,68,68,.55); border-radius: 14px;
+    padding: 13px 20px; margin-bottom: 14px; font-size: 15px; font-weight: 600; color: #fca5a5;
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse { 50% { box-shadow: 0 0 18px rgba(239,68,68,.35); } }
+
+  /* ==================== 三张状态卡片 ==================== */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-bottom: 14px; }
+  .card {
+    position: relative; overflow: hidden;
+    background: linear-gradient(145deg, rgba(30,41,59,.85), rgba(20,30,48,.7));
+    border: 1px solid #334155; border-radius: 16px;
+    padding: 20px 22px 20px 26px; backdrop-filter: blur(8px);
+    transition: transform .25s, box-shadow .25s, border-color .3s;
+  }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .card.ok::before   { background: linear-gradient(180deg,#22c55e,#16a34a); }
+  .card.warn::before { background: linear-gradient(180deg,#f87171,#dc2626); }
+  .card.info::before { background: linear-gradient(180deg,#38bdf8,#0284c7); }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(0,0,0,.3); }
+  .card.ok   { border-color: rgba(34,197,94,.4); }
+  .card.warn { border-color: rgba(239,68,68,.6); box-shadow: 0 0 22px rgba(239,68,68,.12); }
+  .card.info { border-color: rgba(56,189,248,.45); }
+  .card .label { font-size: 12.5px; color: #94a3b8; letter-spacing: 2px; }
+  .card .value { font-size: 44px; font-weight: 800; margin: 6px 0 2px; }
+  .card .value .unit { font-size: 16px; font-weight: 500; color: #94a3b8; margin-left: 4px; }
+  .card .value.danger { color: #ef4444; }
+  .card .sub { font-size: 12.5px; color: #94a3b8; }
+  .card .icon {
+    position: absolute; right: 18px; top: 16px; font-size: 22px;
+    width: 46px; height: 46px; display: flex; align-items: center; justify-content: center;
+    border-radius: 14px; background: rgba(56,189,248,.12); border: 1px solid rgba(56,189,248,.28);
+  }
+
+  /* ==================== 面板（曲线/表格/控制） ==================== */
+  .panel {
+    background: rgba(30,41,59,.7); border: 1px solid #334155; border-radius: 16px;
+    padding: 18px 22px; margin-bottom: 14px; backdrop-filter: blur(8px);
+  }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+  .panel-head h2 { font-size: 15.5px; font-weight: 700; color: #e0f2fe; letter-spacing: .3px; }
+  .panel-head .tip { font-size: 12px; color: #64748b; }
+
+  /* ==================== 远程控制 ==================== */
+  .ctrl-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    border: none; border-radius: 12px; padding: 11px 22px; font-size: 14px; font-weight: 600;
+    color: #fff; cursor: pointer; transition: transform .15s, opacity .15s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-danger { background: linear-gradient(135deg,#dc2626,#b91c1c); box-shadow: 0 4px 14px rgba(220,38,38,.35); }
+  .btn-ok     { background: linear-gradient(135deg,#16a34a,#15803d); box-shadow: 0 4px 14px rgba(22,163,74,.35); }
+  .ctrl-status { font-size: 13px; color: #94a3b8; flex: 1 1 220px; }
+  .ctrl-status.ok  { color: #22c55e; }
+  .ctrl-status.err { color: #ef4444; }
+  .rate-bar {
+    height: 9px; border-radius: 999px; background: rgba(15,23,42,.75);
+    border: 1px solid #334155; overflow: hidden; margin-top: 14px;
+  }
+  .rate-bar-fill {
+    height: 100%; width: 0%; border-radius: 999px;
+    background: linear-gradient(90deg, #22c55e, #38bdf8);
+    transition: width .4s ease, background .4s;
+  }
+  .rate-bar-fill.warn { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+
+  /* ==================== 曲线 ==================== */
+  .chart-box { position: relative; height: 260px; }
+  #chart { width: 100%; height: 100%; display: block; cursor: crosshair; }
+  #chartTip {
+    position: absolute; display: none; pointer-events: none; z-index: 5;
+    background: rgba(15,23,42,.95); border: 1px solid #38bdf8; border-radius: 10px;
+    padding: 7px 11px; font-size: 12.5px; line-height: 1.6; color: #e2e8f0;
+    box-shadow: 0 6px 18px rgba(0,0,0,.45); white-space: nowrap;
+  }
+  #chartTip b { color: #7dd3fc; font-size: 14px; }
+  #chartEmpty {
+    position: absolute; inset: 0; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    color: #64748b; font-size: 14px;
+  }
+  #chartEmpty .big { font-size: 34px; }
+  .stats {
+    display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 12px;
+    font-size: 13px; color: #94a3b8; border-top: 1px solid #334155; padding-top: 12px;
+  }
+  .stats b { color: #e2e8f0; }
+
+  /* ==================== 历史表格 ==================== */
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 520px; }
+  th, td { padding: 9px 10px; text-align: center; border-bottom: 1px solid #334155; }
+  th { color: #94a3b8; font-weight: 500; background: rgba(15,23,42,.6); }
+  tbody tr:hover { background: rgba(56,189,248,.07); }
+  .tag-ok   { color: #22c55e; background: rgba(34,197,94,.13); padding: 3px 11px; border-radius: 999px; font-size: 12px; }
+  .tag-warn { color: #ef4444; background: rgba(239,68,68,.13); padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .tag-info { color: #38bdf8; background: rgba(56,189,248,.13); padding: 3px 11px; border-radius: 999px; font-size: 12px; }
+  .tag-idle { color: #94a3b8; padding: 3px 11px; border-radius: 999px; font-size: 12px; }
+  .empty-row { color: #64748b; padding: 24px; text-align: center; }
+
+  /* ==================== 底部 ==================== */
+  footer {
+    background: rgba(30,41,59,.7); border: 1px solid #334155; border-radius: 14px;
+    padding: 14px 20px; font-size: 13px; color: #94a3b8;
+    display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between;
+  }
+  footer span b { color: #cbd5e1; }
+
+  /* ==================== 手机适配 ==================== */
+  @media (max-width: 520px) {
+    body { padding: 10px; }
+    header { padding: 13px 14px; }
+    header h1 { font-size: 17px; }
+    .meta { text-align: left; width: 100%; }
+    .card .value { font-size: 36px; }
+    .cards { gap: 12px; }
+    .chart-box { height: 220px; }
+  }
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+  <!-- ================= 顶部 ================= -->
+  <header>
+    <h1><span class="dot"></span>电动车电池安全监控</h1>
+    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+      <span class="dev-chip" id="linkChip">🔗 服务器连接中</span>
+      <div class="meta">
+        <div id="clock">--</div>
+        <div>最后更新：<span id="lastTime">--</span></div>
+        <div id="freshness"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= 报警横幅 =================
+       判定条件与后端 /sbsj 保持一致：
+       只有 温度>60℃ 或 烟雾=1 才算报警（继电器通电是正常充电状态） -->
+  <div id="alarmBanner">⚠️ 检测到异常：<span id="alarmText"></span></div>
+
+  <!-- ================= 三张状态卡片 ================= -->
+  <div class="cards">
+    <div class="card" id="cardTemp">
+      <div class="label">温 度</div>
+      <div class="value" id="tempValue">--<span class="unit">℃</span></div>
+      <div class="sub" id="tempSub">等待数据…</div>
+    </div>
+
+    <div class="card" id="cardYanwu">
+      <div class="label">烟 雾 状 态</div>
+      <span class="icon" id="yanwuIcon">💨</span>
+      <div class="value" id="yanwuValue" style="font-size:28px;">--</div>
+      <div class="sub" id="yanwuSub">等待数据…</div>
+    </div>
+
+    <div class="card" id="cardJdq">
+      <div class="label">报 警 状 态</div>
+      <span class="icon" id="jdqIcon">🔔</span>
+      <div class="value" id="jdqValue" style="font-size:28px;">--</div>
+      <div class="sub" id="jdqSub">等待数据…</div>
+    </div>
+  </div>
+
+  <!-- ================= 电池升温速率（原远程控制面板位置） ================= -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>📈 电池升温速率</h2>
+      <span class="tip">每 180ms 采样一步的平均升温，超过 0.5 ℃/步 触发报警</span>
+    </div>
+    <div class="ctrl-row">
+      <span style="font-size:34px;font-weight:800;color:#e2e8f0;" id="rateValue">--</span>
+      <span style="font-size:14px;color:#94a3b8;">℃/步</span>
+      <span id="rateStatus" class="ctrl-status" style="font-size:13px;color:#94a3b8;">等待数据…</span>
+    </div>
+    <div class="rate-bar"><div class="rate-bar-fill" id="rateBarFill"></div></div>
+  </div>
+
+  <!-- ================= 温度曲线 ================= -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>📈 温度变化曲线</h2>
+      <span class="tip">最近 24 小时温度变化</span>
+    </div>
+
+    <div class="chart-box">
+      <canvas id="chart"></canvas>
+      <div id="chartTip"></div>
+      <div id="chartEmpty">
+        <div class="big">📭</div>
+        <div>暂无数据</div>
+        <div style="font-size:12px;color:#475569;">最近 24 小时内没有收到上报记录</div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <span>最高温度：<b id="statMax">--</b></span>
+      <span>最低温度：<b id="statMin">--</b></span>
+      <span>平均温度：<b id="statAvg">--</b></span>
+      <span>数据条数：<b id="statCount">--</b></span>
+      <span>历史总量：<b id="recordCount">--</b> 条</span>
+    </div>
+  </div>
+
+  <!-- ================= 历史数据表格 ================= -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>🗂 历史数据记录</h2>
+      <span class="tip">最近 50 条上报记录</span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>序号</th><th>时间</th><th>温度(℃)</th>
+            <th>烟雾</th><th>报警</th><th>状态</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody">
+          <tr><td colspan="6" class="empty-row">加载中…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ================= 底部 ================= -->
+  <footer>
+    <span>报警阈值：<b>60℃</b></span>
+    <span>邮件告警：<b>已开启</b></span>
+    <span>历史总条数：<b id="recordCount2">-</b></span>
+    <span>待执行指令：<b id="pendingCmd">-</b></span>
+    <span>自动刷新：<b>3 秒</b></span>
+    <span>服务器：<b>8.215.16.101</b></span>
+  </footer>
+
+</div>
+
+<script>
+/* ==================================================================
+   前端逻辑（原生 JS，与 Flask 后端接口一一对应）
+   1. /api/latest            → 最新一条数据 + 三张状态卡片（3 秒刷新）
+   2. /api/history           → 最近 24 小时温度曲线（10 秒刷新）
+   3. /query?limit=50        → 历史数据表格（10 秒刷新）
+   4. /send_cmd              → 指令接口（前端按钮已隐藏：当前硬件无继电器）
+   数据约定：temp(℃) / sulv(升温速率) / yanwu(烟雾) / jdqzt(设备综合报警标志)
+   特殊值：9999=传感器断线，505=主电源断开求救；>200 视为超量程异常
+   ================================================================== */
+
+const TEMP_ALARM = 60;          // 报警阈值，和后端保持一致
+
+/* ---------- 1. 刷新三张卡片 ---------- */
+async function refreshCards() {
+  try {
+    const res = await fetch("/api/latest");
+    const d = await res.json();
+
+    /* 服务器连接状态徽章 */
+    const chip = document.getElementById("linkChip");
+    chip.textContent = "🔗 服务器连接正常";
+    chip.className = "dev-chip online";
+
+    document.getElementById("lastTime").textContent = d.time || "--";
+    document.getElementById("pendingCmd").textContent =
+      (d.pending_commands === undefined || d.pending_commands === null) ? "-" : d.pending_commands;
+    document.getElementById("recordCount").textContent =
+      (d.total_records === undefined || d.total_records === null) ? "-" : d.total_records;
+    document.getElementById("recordCount2").textContent = document.getElementById("recordCount").textContent;
+
+    /* 一条数据都没有：卡片显示占位符 */
+    if (d.temp === null || d.temp === undefined) {
+      document.getElementById("freshness").textContent = "";
+      document.getElementById("tempValue").innerHTML = '--<span class="unit">℃</span>';
+      document.getElementById("tempSub").textContent = "还没有收到过上报数据";
+      document.getElementById("yanwuValue").textContent = "--";
+      document.getElementById("jdqValue").textContent = "--";
+      document.getElementById("cardTemp").className = "card";
+      document.getElementById("cardYanwu").className = "card";
+      document.getElementById("cardJdq").className = "card";
+      document.getElementById("alarmBanner").style.display = "none";
+      return;
+    }
+
+    updateFreshness(d.time);
+
+    const t = Number(d.temp);
+    const sulv = (d.sulv === undefined || d.sulv === null) ? 0 : Number(d.sulv);
+    const tempEl = document.getElementById("tempValue");
+
+    /* 卡片1：温度 —— 区分 正常 / 高温 / 断线(9999) / SOS(505) / 数据异常(>200) */
+    if (t >= 9998.5) {
+      tempEl.innerHTML = '断线';
+      tempEl.classList.add("danger");
+      document.getElementById("cardTemp").className = "card warn";
+      document.getElementById("tempSub").textContent = "传感器断线/未接入，请检查 DS18B20 接线";
+    } else if (t === 505) {
+      tempEl.innerHTML = 'SOS';
+      tempEl.classList.add("danger");
+      document.getElementById("cardTemp").className = "card warn";
+      document.getElementById("tempSub").textContent = "主电源被断开，正在使用备用电源求救！";
+    } else if (t > 200) {
+      tempEl.innerHTML = '异常';
+      tempEl.classList.add("danger");
+      document.getElementById("cardTemp").className = "card warn";
+      document.getElementById("tempSub").textContent = "温度读数超出量程，数据异常";
+    } else if (t > TEMP_ALARM) {
+      tempEl.innerHTML = t.toFixed(1) + '<span class="unit">℃</span>';
+      tempEl.classList.add("danger");
+      document.getElementById("cardTemp").className = "card warn";
+      document.getElementById("tempSub").textContent = "🔥 超过 " + TEMP_ALARM + "℃ 报警阈值！";
+    } else {
+      tempEl.innerHTML = t.toFixed(1) + '<span class="unit">℃</span>';
+      tempEl.classList.remove("danger");
+      document.getElementById("cardTemp").className = "card ok";
+      document.getElementById("tempSub").textContent = "温度正常";
+    }
+
+    /* 卡片2：烟雾 */
+    const yanwuVal = document.getElementById("yanwuValue");
+    if (Number(d.yanwu) === 1) {
+      yanwuVal.textContent = "报警"; yanwuVal.classList.add("danger");
+      document.getElementById("cardYanwu").className = "card warn";
+      document.getElementById("yanwuIcon").textContent = "🔥";
+      document.getElementById("yanwuSub").textContent = "检测到烟雾，请立即检查！";
+    } else {
+      yanwuVal.textContent = "正常"; yanwuVal.classList.remove("danger");
+      document.getElementById("cardYanwu").className = "card ok";
+      document.getElementById("yanwuIcon").textContent = "💨";
+      document.getElementById("yanwuSub").textContent = "未检测到烟雾";
+    }
+
+    /* 卡片3：报警状态（设备上报的 jdqzt 字段 = 综合报警标志） */
+    const alarmOn = Number(d.jdqzt) === 1;
+    const alarmVal = document.getElementById("jdqValue");
+    if (alarmOn) {
+      alarmVal.textContent = "报警中"; alarmVal.classList.add("danger");
+      document.getElementById("cardJdq").className = "card warn";
+      document.getElementById("jdqIcon").textContent = "🚨";
+      document.getElementById("jdqSub").textContent = "设备已触发报警，请立即检查！";
+    } else {
+      alarmVal.textContent = "正常"; alarmVal.classList.remove("danger");
+      document.getElementById("cardJdq").className = "card ok";
+      document.getElementById("jdqIcon").textContent = "🔔";
+      document.getElementById("jdqSub").textContent = "一切正常";
+    }
+
+    /* 电池升温速率面板（原远程控制位置） */
+    const rateValEl = document.getElementById("rateValue");
+    if (rateValEl) {
+      rateValEl.textContent = Number(sulv).toFixed(2);
+      const rateSt = document.getElementById("rateStatus");
+      if (sulv > 0.5) {
+        rateValEl.style.color = "#ef4444";
+        rateSt.textContent = "⚠️ 升温过快！已超过 0.5 ℃/步 报警阈值";
+        rateSt.style.color = "#ef4444";
+      } else {
+        rateValEl.style.color = "#e2e8f0";
+        rateSt.textContent = "升温速率正常";
+        rateSt.style.color = "#22c55e";
+      }
+      const bar = document.getElementById("rateBarFill");
+      if (bar) {
+        bar.style.width = Math.min(100, (Number(sulv) / 0.5) * 100) + "%";
+        bar.classList.toggle("warn", sulv > 0.5);
+      }
+    }
+
+    /* 报警横幅：与服务器报警判定一致（断线 / SOS / 高温 / 烟雾 / 升温速率 / 数据异常） */
+    const reasons = [];
+    if (t >= 9998.5)          reasons.push("传感器断线/未接入");
+    else if (t === 505)       reasons.push("主电源被断开（求救模式）");
+    else if (t > 200)         reasons.push("温度数据异常（超量程）");
+    else if (t > TEMP_ALARM)  reasons.push("温度过高 " + t.toFixed(1) + "℃");
+    if (Number(d.yanwu) === 1)      reasons.push("烟雾报警");
+    if (sulv > 0.5)                 reasons.push("升温速率异常");
+    const banner = document.getElementById("alarmBanner");
+    if (reasons.length > 0) {
+      banner.style.display = "block";
+      document.getElementById("alarmText").textContent = reasons.join("、");
+    } else {
+      banner.style.display = "none";
+    }
+  } catch (e) {
+    console.error("刷新卡片失败", e);
+    const chip = document.getElementById("linkChip");
+    chip.textContent = "⚠️ 服务器连接失败";
+    chip.className = "dev-chip offline";
+  }
+}
+
+/* ---------- 2. 温度曲线（后端固定返回最近 24 小时） ---------- */
+async function refreshChart() {
+  try {
+    const res = await fetch("/api/history");
+    const data = await res.json();
+    if (data.status !== "ok") return;
+
+    const points = data.points || [];
+    const st = data.stats || {};
+
+    document.getElementById("statMax").textContent   = (st.max === null || st.max === undefined) ? "--" : st.max + " ℃";
+    document.getElementById("statMin").textContent   = (st.min === null || st.min === undefined) ? "--" : st.min + " ℃";
+    document.getElementById("statAvg").textContent   = (st.avg === null || st.avg === undefined) ? "--" : st.avg + " ℃";
+    document.getElementById("statCount").textContent = (st.count === undefined) ? "--" : st.count;
+
+    const empty = document.getElementById("chartEmpty");
+    if (!data.has_data) {
+      empty.style.display = "flex";
+      drawChart(points, true);
+    } else {
+      empty.style.display = "none";
+      drawChart(points, false);
+    }
+  } catch (e) { console.error("刷新曲线失败", e); }
+}
+
+/* 手绘折线图（Canvas，高清） */
+let chartDots = [];   // 当前曲线的数据点屏幕坐标，供悬停提示使用
+function drawChart(points, allEmpty) {
+  chartDots = [];
+  const canvas = document.getElementById("chart");
+  const box = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+
+  const W = box.clientWidth, H = box.clientHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 44, padR = 14, padT = 14, padB = 28;
+  const cw = W - padL - padR, ch = H - padT - padB;
+  if (cw <= 0 || ch <= 0 || points.length === 0) return;
+
+  /* Y 轴上限：至少 70，保证 60℃ 报警线可见 */
+  let yMax = 70;
+  points.forEach(p => { if (p.temp !== null && p.temp > yMax) yMax = Math.ceil(p.temp / 10) * 10 + 10; });
+
+  const yOf = v => padT + ch - (v / yMax) * ch;
+  const xOf = i => padL + (points.length <= 1 ? cw / 2 : (i / (points.length - 1)) * cw);
+
+  /* 网格线 + Y 轴刻度 */
+  ctx.strokeStyle = "#334155"; ctx.fillStyle = "#64748b";
+  ctx.font = "11px sans-serif"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  const gridN = 4;
+  for (let i = 0; i <= gridN; i++) {
+    const v = (yMax / gridN) * i;
+    const y = yOf(v);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + cw, y);
+    ctx.globalAlpha = (i === 0) ? 0.9 : 0.35; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillText(v.toFixed(0), padL - 6, y);
+  }
+  ctx.fillText("℃", padL - 6, padT - 2);
+
+  /* 60℃ 报警虚线 */
+  const yAlarm = yOf(TEMP_ALARM);
+  if (TEMP_ALARM <= yMax) {
+    ctx.save();
+    ctx.setLineDash([5, 5]); ctx.strokeStyle = "#ef4444"; ctx.globalAlpha = .8;
+    ctx.beginPath(); ctx.moveTo(padL, yAlarm); ctx.lineTo(padL + cw, yAlarm); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = "#ef4444"; ctx.textAlign = "left";
+    ctx.fillText("报警线 60℃", padL + 4, yAlarm - 8);
+  }
+
+  /* X 轴时间标签（最多 6 个） */
+  ctx.fillStyle = "#64748b"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const step = Math.max(1, Math.floor(points.length / 6));
+  for (let i = 0; i < points.length; i += step) {
+    ctx.fillText(points[i].t, xOf(i), padT + ch + 7);
+  }
+
+  /* ★渐变面积填充：让曲线更有质感（独立于折线逻辑，不影响数据） */
+  if (!allEmpty) {
+    const grad = ctx.createLinearGradient(0, padT, 0, padT + ch);
+    grad.addColorStop(0, "rgba(56,189,248,.30)");
+    grad.addColorStop(1, "rgba(56,189,248,0)");
+    ctx.fillStyle = grad;
+    let segs = [], cur = [];
+    points.forEach((p, i) => {
+      if (p.temp === null) { if (cur.length) segs.push(cur); cur = []; }
+      else cur.push({ x: xOf(i), y: yOf(p.temp) });
+    });
+    if (cur.length) segs.push(cur);
+    segs.forEach(s => {
+      if (s.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(s[0].x, padT + ch);
+      s.forEach(pt => ctx.lineTo(pt.x, pt.y));
+      ctx.lineTo(s[s.length - 1].x, padT + ch);
+      ctx.closePath(); ctx.fill();
+    });
+  }
+
+  /* 画温度折线 */
+  const hasAny = points.some(p => p.temp !== null);
+  ctx.lineWidth = 2; ctx.lineJoin = "round";
+
+  if (!hasAny || allEmpty) {
+    ctx.save();
+    ctx.setLineDash([6, 6]); ctx.strokeStyle = "#475569"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(padL, yOf(0)); ctx.lineTo(padL + cw, yOf(0)); ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  let seg = [];
+  let curIsReal = null;
+  const flushSeg = (isReal) => {
+    if (seg.length >= 2) {
+      ctx.beginPath();
+      ctx.strokeStyle = isReal ? "#38bdf8" : "#475569";
+      ctx.setLineDash(isReal ? [] : [5, 5]);
+      seg.forEach((pt, k) => k === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    seg = [];
+  };
+
+  points.forEach((p) => {
+    const isReal = (p.temp !== null);
+    const val = isReal ? p.temp : 0;
+    const pt = { x: xOf(points.indexOf(p)), y: yOf(val) };
+
+    if (curIsReal === null) curIsReal = isReal;
+    if (isReal !== curIsReal) {
+      seg.push(pt);
+      flushSeg(curIsReal);
+      seg.push(pt);
+      curIsReal = isReal;
+    }
+    seg.push(pt);
+  });
+  flushSeg(curIsReal);
+
+  /* 数据点：>60℃ 红点；烟雾报警时段加橙圈 */
+  points.forEach((p, i) => {
+    if (p.temp === null) return;
+    const x = xOf(i), y = yOf(p.temp);
+    chartDots.push({ x, y, t: p.t, temp: p.temp, alarm: p.alarm });
+    ctx.beginPath();
+    ctx.arc(x, y, p.temp > TEMP_ALARM ? 4 : 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = p.temp > TEMP_ALARM ? "#ef4444" : "#38bdf8";
+    ctx.fill();
+    if (p.alarm > 0) {
+      ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  });
+}
+
+/* ---------- 曲线悬停提示 ---------- */
+(function bindChartHover() {
+  const canvas = document.getElementById("chart");
+  const tip = document.getElementById("chartTip");
+  canvas.addEventListener("mousemove", (e) => {
+    if (!chartDots.length) { tip.style.display = "none"; return; }
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    // 找横向最近的点
+    let best = null, bd = 1e9;
+    chartDots.forEach(d => {
+      const dx = Math.abs(d.x - mx);
+      if (dx < bd) { bd = dx; best = d; }
+    });
+    if (!best || bd > 40) { tip.style.display = "none"; return; }
+    const tempText = best.temp >= 9998.5 ? "断线" : best.temp === 505 ? "SOS" : best.temp + " ℃";
+    tip.innerHTML = "时间：" + best.t + "<br>温度：<b>" + tempText + "</b>" +
+                    (best.alarm > 0 ? "<br>⚠️ 该时段报警" : "");
+    tip.style.display = "block";
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = best.x + 12, top = best.y - th - 10;
+    if (left + tw > rect.width) left = best.x - tw - 12;
+    if (top < 0) top = best.y + 12;
+    tip.style.left = left + "px"; tip.style.top = top + "px";
+  });
+  canvas.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+})();
+
+/* ---------- 3. 历史数据表格（最近 50 条） ---------- */
+async function refreshTable() {
+  try {
+    const res = await fetch("/query?limit=50");
+    const data = await res.json();
+    const body = document.getElementById("historyBody");
+
+    if (!data.records || data.records.length === 0) {
+      body.innerHTML = '<tr><td colspan="6" class="empty-row">暂无数据（还没有上报记录）</td></tr>';
+      return;
+    }
+
+    body.innerHTML = data.records.map((r, i) => {
+      const t = Number(r.temp);
+      const disconn = t >= 9998.5;                    /* 传感器断线（9999） */
+      const sos = t === 505;                          /* 主电源断开求救（505） */
+      const bad = (t > 200) && !disconn && !sos;      /* 读数超量程（如旧代码 9178） */
+      const hot = t > TEMP_ALARM && t <= 200;
+      const smoke = Number(r.yanwu) === 1;
+      const alarmFlag = Number(r.jdqzt) === 1;        /* 设备综合报警标志 */
+      const sulv = Number(r.sulv) || 0;
+      /* 异常判定与后端报警一致：温度/烟雾/升温速率/断线/SOS */
+      const abnormal = hot || smoke || disconn || sos || bad || sulv > 0.5;
+      const tempText = disconn ? "断线" : sos ? "SOS" : bad ? "异常" : t.toFixed(1);
+      const tempCls = (hot || disconn || sos || bad) ? "tag-warn" : "";
+      return `<tr>
+        <td>${i + 1}</td>
+        <td>${r.time}</td>
+        <td class="${tempCls}">${tempText}</td>
+        <td class="${smoke ? "tag-warn" : "tag-ok"}">${smoke ? "报警" : "正常"}</td>
+        <td class="${alarmFlag ? "tag-warn" : "tag-ok"}">${alarmFlag ? "报警" : "正常"}</td>
+        <td class="${abnormal ? "tag-warn" : "tag-ok"}">${abnormal ? "异常" : "正常"}</td>
+      </tr>`;
+    }).join("");
+  } catch (e) { console.error("刷新表格失败", e); }
+}
+
+/* ---------- 数据新鲜度提示 ----------
+   区分"设备真的在报警"和"设备早就不上报了，页面停留在旧数据"
+   超过 2 分钟没新数据 → 黄色提醒；超过 1 小时 → 红色提醒 */
+function updateFreshness(t) {
+  const el = document.getElementById("freshness");
+  if (!t) { el.textContent = ""; return; }
+  /* iOS/Safari 不认 "YYYY-MM-DD HH:MM:SS"，要换成斜杠格式 */
+  const last = new Date(t.replace(/-/g, "/"));
+  const diff = (Date.now() - last.getTime()) / 1000;
+  if (isNaN(diff)) { el.textContent = ""; return; }
+
+  if (diff < 120) {
+    el.textContent = "🟢 数据实时刷新中";
+    el.style.color = "#22c55e";
+  } else if (diff < 3600) {
+    el.textContent = "🟡 数据已过期 " + Math.floor(diff / 60) + " 分钟（设备可能离线）";
+    el.style.color = "#f59e0b";
+  } else {
+    el.textContent = "🔴 数据停留在 " + Math.floor(diff / 3600) + " 小时前（设备可能离线）";
+    el.style.color = "#ef4444";
+  }
+}
+
+/* ---------- 4. 远程控制：手动断电 / 恢复通电 ---------- */
+async function sendCommand(cmd, btn) {
+  const label = (cmd === "relay_off") ? "手动断电" : "恢复通电";
+  if (!confirm("确定下发【" + label + "】指令吗？\n指令会在设备下次上报时执行。")) return;
+
+  const st = document.getElementById("ctrlStatus");
+  btn.disabled = true;
+  st.className = "ctrl-status";
+  st.textContent = "下发中…";
+
+  try {
+    const res = await fetch("/send_cmd", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cmd: cmd })
+    });
+    const d = await res.json();
+
+    if (d.status === "ok") {
+      st.className = "ctrl-status ok";
+      st.innerHTML = "✅ 【" + label + "】指令已入队（id=" + d.id + "），等待设备下次上报时执行";
+      await refreshCards();
+    } else {
+      st.className = "ctrl-status err";
+      st.textContent = "❌ 下发失败：" + (d.msg || "未知错误");
+    }
+  } catch (e) {
+    st.className = "ctrl-status err";
+    st.textContent = "❌ 网络错误：" + e;
+  }
+  btn.disabled = false;
+}
+
+/* ---------- 顶部实时时钟 ---------- */
+function updateClock() {
+  const el = document.getElementById("clock");
+  if (!el) return;
+  const d = new Date();
+  const p = n => String(n).padStart(2, "0");
+  const week = ["日","一","二","三","四","五","六"][d.getDay()];
+  el.textContent = d.getFullYear() + "-" + p(d.getMonth()+1) + "-" + p(d.getDate()) +
+                   "  " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()) +
+                   "  星期" + week;
+}
+
+/* ---------- 统一刷新入口 ---------- */
+async function refreshAll() {
+  await refreshCards();
+  await refreshChart();
+  await refreshTable();
+}
+
+/* ---------- 启动 ---------- */
+(async function start() {
+  updateClock();
+  setInterval(updateClock, 1000);
+  await refreshAll();
+  setInterval(refreshCards, 3000);     // 卡片每 3 秒刷新
+  setInterval(refreshChart, 10000);    // 曲线每 10 秒刷新
+  setInterval(refreshTable, 10000);    // 表格每 10 秒刷新
+  window.addEventListener("resize", () => refreshChart());
+})();
+</script>
+</body>
+</html>
