@@ -1,0 +1,17 @@
+[Unit]
+Description=EV Battery Monitor Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/evserver
+Environment=TZ=Asia/Shanghai
+ExecStart=/usr/bin/python3 /root/evserver/server.py
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/ev_server.log
+StandardError=append:/var/log/ev_server.log
+
+[Install]
+WantedBy=multi-user.target
