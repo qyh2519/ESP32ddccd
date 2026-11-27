@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-电动车电池安全监测服务器（印尼公网服务器）
-功能：特殊码判定、报警邮件、指令队列、曲线统计。
+充电桩监控服务器（完整功能版 —— 印尼公网服务器）
+功能与原 oec-server 完全一致：特殊码判定、报警邮件、指令队列、曲线统计。
 后端 SQLite 单文件，零第三方依赖。
 """
 import json, sqlite3, datetime, threading, smtplib, logging
@@ -18,7 +18,7 @@ MAX_WD = 60.0
 TEMP_DISCONNECT = 9999.0
 TEMP_SOS = 505.0
 
-# 报警邮件配置
+# 报警邮件配置（与旧服务器一致，默认关闭）
 send_mail_flag = True
 smtp_server = "smtp.qq.com"; smtp_port = 465
 my_qq = "q221147@qq.com"; my_pass = "hkqtujeomfonjbib"
@@ -53,14 +53,14 @@ def fa_youjian(wd, yuanyin):
     if now - last_mail_time < 15:
         return
     last_mail_time = now
-    text = ("电动车电池异常报警\n\n当前温度: %.1f℃\n报警原因: %s\n\n"
+    text = ("电动车安全监测系统 异常报警\n\n当前温度: %.1f℃\n报警原因: %s\n\n"
             "请及时登录仪表盘查看详情:\nhttp://8.215.16.101/dashboard") % (wd, yuanyin)
     def do_send():
         try:
             msg = MIMEText(text, "plain", "utf-8")
-            msg["From"] = formataddr((str(Header("电池安全监测系统", "utf-8")), my_qq))
+            msg["From"] = formataddr((str(Header("电动车安全监测系统", "utf-8")), my_qq))
             msg["To"] = ", ".join(to_mails)
-            msg["Subject"] = Header("【严重警告】检测到电池安全隐患", "utf-8")
+            msg["Subject"] = Header("【严重警告】检测到安全隐患", "utf-8")
             s = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=15)
             s.login(my_qq, my_pass)
             for mail in to_mails:
